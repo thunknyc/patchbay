@@ -13,7 +13,7 @@
             set-recv-timeout
             set-surveyor-deadline
             set-reqrep-reply-resend-interval
-            subscribe
+            subscribe subscribe*
             unsubscribe
             shutdown
             send-string freemsg
@@ -106,6 +106,9 @@
           ((subscribe-1 s (car topics))
            (loop (cdr topics)))
           (else #f))))
+
+(define (subscribe* s topics)
+  (apply subscribe s topics))
 
 (define (unsubscribe-1 s topic)
   (setsockopt-string s NN_SUB NN_SUB_UNSUBSCRIBE topic))
