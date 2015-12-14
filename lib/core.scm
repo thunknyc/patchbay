@@ -1,5 +1,5 @@
 (define-module (core)
-  #:export (-> ->> doto))
+  #:export (-> ->> comment doto))
 
 (define-syntax ->
   (syntax-rules ()
