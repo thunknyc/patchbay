@@ -23,3 +23,8 @@
      (let ((x VALUE))
        (PROC x ARGS ...)
        (doto x FORMS ...)))))
+
+(define-syntax comment
+  (syntax-rules ()
+    ((comment VALUES ...)
+     (begin))))
