@@ -2,7 +2,9 @@
   #:use-module (rnrs bytevectors)
   #:use-module (core)
   #:use-module (core scalability primitives)
-  #:export (call-with-socket-endpoint send-string-to-socket call-with-received-string)
+  #:export (call-with-socket-endpoint
+            send-string-to-socket
+            call-with-received-string)
   #:re-export (subscribe))
 
 
