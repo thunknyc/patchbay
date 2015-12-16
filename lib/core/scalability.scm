@@ -25,18 +25,17 @@
       (else (throw 'unknown-socket-type socket-type))))
   
   (define (process-options s options)
+
+    (define (set-option proc option-args)
+      (let ((result (apply proc s option-args)))
+        (if result result (throw 'socket-option-failed s proc option-args))))
+
     (map (lambda (option)
            (case (car option)
              ((linger)
-              (let ((result (set-linger s (cadr option))))
-                (if result
-                    result
-                    (throw 'set-linger-failed s (cadr option)))))
+              (set-option set-linger (cdr option)))
              ((receive-timeout)
-              (let ((result (set-recv-timeout s (cadr option))))
-                (if result
-                    result
-                    (throw 'set-recv-timeout-failed s (cadr option)))))
+              (set-option set-recv-timeout (cdr option)))
              (else
               (throw 'unknown-socket-option option))))
          options))
