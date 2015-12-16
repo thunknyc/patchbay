@@ -10,7 +10,7 @@
             pubsub-pub-socket pubsub-sub-socket
             survey-respondent-socket survey-surveyor-socket
             reqrep-request-socket reqrep-reply-socket
-            set-recv-timeout
+            set-recv-timeout set-linger
             set-surveyor-deadline
             set-reqrep-reply-resend-interval
             subscribe subscribe*
@@ -23,6 +23,7 @@
 (define nanomsg-func (partial lib-func (dynamic-link "libnanomsg")))
 
 (define EAGAIN 35)
+(define ETIMEDOUT 60)
 
 (define AF_SP 1)
 
@@ -122,6 +123,9 @@
            (loop (cdr topics)))
           (else #f))))
 
+(define (set-linger s millis)
+  (setsockopt-int s NN_SOL_SOCKET NN_LINGER millis))
+
 (define (set-recv-timeout s millis)
   (setsockopt-int s NN_SOL_SOCKET NN_RCVTIMEO millis))
 
@@ -185,9 +189,8 @@
 ; int nn_shutdown (int s, int how);
 (define nn-shutdown (nanomsg-func int "nn_shutdown" int int))
 
-(define (shutdown s . opt)
-  (let ((how (if (null? opt) 0 (car opt))))
-    (>= (nn-shutdown s how) 0)))
+(define (shutdown s how)
+  (>= (nn-shutdown s how) 0))
 
 ; int nn_close (int s);
 (define nn-close (nanomsg-func int "nn_close" int))
@@ -230,4 +233,6 @@
 (define errno nn-errno)
 
 (define (eagain?)
-  (= (errno) EAGAIN))
+  (let ((err (errno)))
+    (or (= err EAGAIN)
+        (= err ETIMEDOUT))))

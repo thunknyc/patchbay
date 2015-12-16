@@ -1,7 +1,10 @@
 (define-module (core scalability)
   #:use-module (rnrs bytevectors)
   #:use-module (core)
-  #:use-module (core scalability primitives))
+  #:use-module (core scalability primitives)
+  #:export (call-with-socket-endpoint send-string-to-socket call-with-received-string)
+  #:re-export (subscribe))
+
 
 (define (call-with-socket socket-type options proc)
 
@@ -22,8 +25,18 @@
   (define (process-options s options)
     (map (lambda (option)
            (case (car option)
-             ((recieve-timeout) (set-recv-timeout s (cadr option)))
-             (else (throw 'unknown-socket-option option))))
+             ((linger)
+              (let ((result (set-linger s (cadr option))))
+                (if result
+                    result
+                    (throw 'set-linger-failed s (cadr option)))))
+             ((receive-timeout)
+              (let ((result (set-recv-timeout s (cadr option))))
+                (if result
+                    result
+                    (throw 'set-recv-timeout-failed s (cadr option)))))
+             (else
+              (throw 'unknown-socket-option option))))
          options))
 
   (let ((s (socket-for-type)))
@@ -37,18 +50,31 @@
         (close s)
         (apply throw key args)))))
 
-(define (call-with-endpoint s endpoint-type addr proc)
-  (let ((endpoint (case endpoint-type
-                    ((connect) (connect s addr))
-                    ((bind) (bind s addr))
-                    (else (throw 'unknown-endpoint-type endpoint-type)))))
+(define (with-endpoint s endpoint-type addr thunk)
+
+  (define (bind-or-connect)
+    (case endpoint-type
+      ((connect)
+       (let ((endpoint (connect s addr)))
+         (if (>= endpoint 0)
+             endpoint
+             (throw 'connect-failed s addr))))
+      ((bind)
+       (let ((endpoint (bind s addr)))
+         (if (>= endpoint 0)
+             endpoint
+             (throw 'bind-failed s addr))))
+      (else
+       (throw 'unknown-endpoint-type endpoint-type))))
+
+  (let ((endpoint (bind-or-connect)))
     (with-throw-handler #t
       (lambda ()
-        (let ((value (proc endpoint)))
-          (shutdown endpoint)
+        (let ((value (thunk)))
+          (shutdown s endpoint)
           value))
       (lambda (key . args)
-        (shutdown endpoint)
+        (shutdown s endpoint)
         (apply throw key args)))))
 
 (define (call-with-socket-endpoint socket-type socket-options
@@ -56,14 +82,14 @@
   (call-with-socket
    socket-type socket-options
    (lambda (s)
-     (call-with-endpoint
+     (with-endpoint
       s endpoint-type
       address
-      (lambda (e)
-        (proc s e))))))
+      (lambda ()
+        (proc s))))))
 
-(define (call-with-recv-msg e proc)
-  (let ((msg (recv e)))
+(define (call-with-received-message s proc)
+  (let ((msg (recv s)))
     (cond (msg
            (let ((value (proc msg)))
              (freemsg msg)
@@ -71,25 +97,61 @@
           ((eagain?)
            #f)
           (else
-           (throw 'call-with-recv-msg-failed e (errno))))))
+           (throw 'call-with-received-message-failed s (errno))))))
 
-(define (call-with-recv-string e proc)
-  (call-with-recv-msg e
+(define (call-with-received-string s proc)
+  (call-with-received-message s
     (lambda (msg)
-    (proc (utf8->string msg)))))
+      (proc (utf8->string msg)))))
 
-(define (send-to-endpoint e msg)
-  (let ((bytes (send e msg)))
-    (cond ((>= bytes 0)
-           bytes)
-          ((eagain?)
+(define (send-to-socket s msg)
+  (let ((bytes (send s msg)))
+    (cond ((and (not bytes) (eagain?))
            #f)
-          (throw 'send-to-endpoint-failed e (errno)))))
+          ((not bytes)
+           (throw 'send-to-socket-failed s (errno)))
+          (else
+           bytes))))
 
-(define (send-string-to-endpoint e s)
-  (send-to-endpoint e (string->utf8 s)))
+(define (send-string-to-socket s str)
+  (send-to-socket s (string->utf8 str)))
 
 (comment
+ (begin
+
+   (define address "ipc:///tmp/test.ipc")
+
+   (call-with-socket-endpoint
+        'sub '() 'bind address
+        (lambda (s)
+          (format #t "SOCK: ~s SUBSCRIBE: ~s\n" s (subscribe s "test|"))
+          (call-with-received-string
+           s
+           (lambda (str)
+             (format #t "RECEIVED: ~s\n" str)))))
+
+   ))
+
+(comment
+
+ (define address "ipc:///tmp/pubsub.ipc")
+
  (call-with-socket-endpoint
-  'pub '() 'connect "ipc:///tmp/test.ipc"
-  (lambda (s e) (list s e))))
+  'pub '() 'connect
+  (lambda (s e) (list s e)))
+
+ (call-with-new-thread
+  (lambda ()
+       (call-with-socket-endpoint
+        'sub '() 'bind address
+        (lambda (s)
+          (subscribe s "test|")
+          (call-with-received-string
+           s
+           (lambda (str)
+             (format #t "RECEIVED: ~s\n" str)))))))
+
+ (call-with-socket-endpoint
+  'pub '() 'connect address
+  (lambda (s)
+    (send-string-to-socket s "test|hello, world."))))
