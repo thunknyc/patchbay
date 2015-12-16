@@ -10,7 +10,7 @@
             pubsub-pub-socket pubsub-sub-socket
             survey-respondent-socket survey-surveyor-socket
             reqrep-request-socket reqrep-reply-socket
-            set-recv-timeout set-linger
+            set-send-timeout set-recv-timeout set-linger
             set-surveyor-deadline
             set-reqrep-reply-resend-interval
             subscribe subscribe*
@@ -125,6 +125,9 @@
 
 (define (set-linger s millis)
   (setsockopt-int s NN_SOL_SOCKET NN_LINGER millis))
+
+(define (set-send-timeout s millis)
+  (setsockopt-int s NN_SOL_SOCKET NN_SNDTIMEO millis))
 
 (define (set-recv-timeout s millis)
   (setsockopt-int s NN_SOL_SOCKET NN_RCVTIMEO millis))
